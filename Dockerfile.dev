@@ -1,0 +1,28 @@
+# Development Dockerfile
+
+FROM python:3.11-slim
+
+# Set environment variables
+ENV PYTHONDONTWRITEBYTECODE=1
+ENV PYTHONUNBUFFERED=1
+
+# Set working directory
+WORKDIR /app
+
+# Install system dependencies for PostgreSQL
+RUN apt-get update && apt-get install -y \
+  libpq-dev gcc \
+  && rm -rf /var/lib/apt/lists/*
+
+# Install dependencies
+COPY requirements.txt /app/
+RUN pip install --no-cache-dir -r requirements.txt
+
+# Copy source code
+COPY . /app/
+
+# Expose port
+EXPOSE 8000
+
+# Run with Django dev server (hot reload)
+CMD ["python", "manage.py", "runserver", "0.0.0.0:8000", "--settings=eta_api.settings.dev"]

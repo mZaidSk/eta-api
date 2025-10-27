@@ -1,0 +1,50 @@
+# Python
+# ----------------------------------------------------------------
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+*.so
+
+# Virtual Environment
+# ----------------------------------------------------------------
+.env
+venv/
+env/
+venv.bak/
+env.bak/
+
+# Django
+# ----------------------------------------------------------------
+*.log
+db.sqlite3
+db.sqlite3-journal
+media/
+static_root/
+local_settings.py
+
+# Secrets (NEVER commit secrets!)
+# ----------------------------------------------------------------
+*.env
+.env.*
+secrets.ini
+
+# IDE & Editor Files
+# ----------------------------------------------------------------
+.idea/
+.vscode/
+*.swp
+*.swo
+*.sublime-project
+*.sublime-workspace
+
+# Operating System
+# ----------------------------------------------------------------
+.DS_Store
+Thumbs.db
+
+# Build & Distribution
+# ----------------------------------------------------------------
+build/
+dist/
+*.egg-info/
