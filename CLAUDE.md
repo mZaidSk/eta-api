@@ -64,6 +64,12 @@ python manage.py shell
 
 # Check for issues
 python manage.py check
+
+# Process recurring transactions (creates actual transactions from recurring templates)
+python manage.py process_recurring_transactions
+
+# Dry run to see what would be processed
+python manage.py process_recurring_transactions --dry-run
 ```
 
 ## Architecture
@@ -95,8 +101,9 @@ User (1) ──> (N) RecurringTransaction ──> (1) Category
 Key points:
 - All models use user-scoped data (foreign key to User)
 - Transactions require both a Category and an Account
-- Categories can be income or expense type
-- Budgets track `current_expense` and calculate `remaining` as a property
+- Categories can be income or expense type, and include `colorHex` and `icon` fields for UI customization
+- Budgets track `current_expense` (auto-updated via signals) and calculate `remaining` as a property
+- RecurringTransactions include `type`, `last_processed_date` for automated processing
 
 ### URL Routing
 
@@ -176,6 +183,46 @@ Dashboard views (`apps/dashboard/views.py`) support optional `?account=<id>` fil
 
 All use Django ORM aggregations (`Sum`, `TruncMonth`) for efficient queries.
 
+## Automated Data Updates
+
+### Django Signals (apps/transactions/signals.py)
+
+The application uses Django signals to automatically maintain data consistency:
+
+**Budget Expense Updates:**
+- When a Transaction is created/updated/deleted, related Budget `current_expense` is automatically recalculated
+- Only expense-type transactions within the budget's date range affect the budget
+- Signals handle category and date changes properly
+
+**Account Balance Updates:**
+- Transaction create: Adds income/subtracts expense from account balance
+- Transaction update: Reverts old amount from old account, applies new amount to new account
+- Transaction delete: Reverts the transaction amount from account balance
+- All operations maintain accurate account balances automatically
+
+**Important:** Do not manually update `Budget.current_expense` or `Account.balance` - they are managed by signals.
+
+### Recurring Transactions
+
+RecurringTransactions are processed via a management command (not automatic):
+
+```bash
+# Run daily via cron or task scheduler
+python manage.py process_recurring_transactions
+```
+
+The command:
+- Finds active recurring transactions (start_date <= today, end_date >= today or null)
+- Creates actual Transaction records based on frequency (daily, weekly, monthly, yearly)
+- Updates `last_processed_date` to prevent duplicates
+- Respects the RecurringTransaction `type` field (income or expense)
+
+In production, schedule this command to run daily using:
+- **Linux/Mac**: crontab (`0 0 * * * /path/to/python manage.py process_recurring_transactions`)
+- **Windows**: Task Scheduler
+- **Docker/Kubernetes**: CronJob
+- **Celery Beat**: Periodic task
+
 ## Important Conventions
 
 1. **Settings Module**: Default is `eta_api.settings.dev` (set in `manage.py`)
@@ -184,6 +231,7 @@ All use Django ORM aggregations (`Sum`, `TruncMonth`) for efficient queries.
 4. **Database**: PostgreSQL is required (uses psycopg2-binary)
 5. **Environment Variables**: All secrets must be in `.env` (never committed)
 6. **Custom Table Names**: Models may specify `db_table` in Meta (e.g., User uses "users")
+7. **Signals**: Transaction signals automatically update Account balances and Budget expenses - do not modify these fields manually
 
 ## Testing
 

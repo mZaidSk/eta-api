@@ -37,6 +37,11 @@ class RecurringTransaction(models.Model):
         ("yearly", "Yearly"),
     ]
 
+    TRANSACTION_TYPE_CHOICES = [
+        ("income", "Income"),
+        ("expense", "Expense"),
+    ]
+
     user = models.ForeignKey(
         settings.AUTH_USER_MODEL,
         on_delete=models.CASCADE,
@@ -51,11 +56,13 @@ class RecurringTransaction(models.Model):
         null=True,
         related_name="recurring_transactions",
     )
+    type = models.CharField(max_length=10, choices=TRANSACTION_TYPE_CHOICES, default="expense")
     amount = models.DecimalField(max_digits=12, decimal_places=2)
     description = models.TextField(blank=True, null=True)
     frequency = models.CharField(max_length=10, choices=FREQUENCY_CHOICES)
     start_date = models.DateField()
     end_date = models.DateField(blank=True, null=True)
+    last_processed_date = models.DateField(blank=True, null=True)
 
     def __str__(self):
         return f"Recurring {self.category} - {self.amount} ({self.frequency}) via {self.account.name}"
