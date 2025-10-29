@@ -8,6 +8,15 @@ from apps.accounts.models import Account
 from django.db.models import Sum
 from django.db.models.functions import TruncMonth
 from django.utils.timezone import now
+from .analytics import (
+    calculate_financial_health_score,
+    calculate_spending_growth_rate,
+    forecast_cash_flow,
+    calculate_budget_burn_rate,
+    analyze_spending_patterns,
+    get_category_intelligence,
+    get_transaction_statistics
+)
 
 
 # Utility: get filtered transactions by account if account_id provided
@@ -142,3 +151,197 @@ def monthly_trend_view(request):
     return success_response(
         list(data.values()), message="Monthly trend fetched successfully"
     )
+
+
+# 5. Financial Health Score
+@api_view(["GET"])
+@permission_classes([IsAuthenticated])
+def financial_health_view(request):
+    """
+    Calculate comprehensive financial health score (0-100)
+    Based on: savings rate, budget adherence, spending stability, account balance
+    """
+    user = request.user
+    health_data = calculate_financial_health_score(user)
+    return success_response(health_data, message="Financial health score calculated successfully")
+
+
+# 6. Spending Trends & Growth Rates
+@api_view(["GET"])
+@permission_classes([IsAuthenticated])
+def spending_trends_view(request):
+    """
+    Get month-over-month and year-over-year spending growth rates
+    Supports optional account filtering
+    """
+    user = request.user
+    account_id = request.GET.get("account")
+    trends_data = calculate_spending_growth_rate(user, account_id)
+    return success_response(trends_data, message="Spending trends fetched successfully")
+
+
+# 7. Cash Flow Forecast
+@api_view(["GET"])
+@permission_classes([IsAuthenticated])
+def cash_flow_forecast_view(request):
+    """
+    Predict future cash flow for next 3-6 months based on historical averages
+    Query param: months (default: 3, max: 12)
+    """
+    user = request.user
+    months_ahead = int(request.GET.get("months", 3))
+    months_ahead = min(months_ahead, 12)  # Cap at 12 months
+
+    forecast_data = forecast_cash_flow(user, months_ahead)
+    return success_response(forecast_data, message="Cash flow forecast generated successfully")
+
+
+# 8. Budget Performance & Burn Rate
+@api_view(["GET"])
+@permission_classes([IsAuthenticated])
+def budget_burn_rate_view(request):
+    """
+    Analyze budget consumption rate and predict exhaustion date
+    Shows daily burn rate and spending velocity
+    """
+    user = request.user
+    burn_rate_data = calculate_budget_burn_rate(user)
+    return success_response(burn_rate_data, message="Budget burn rate calculated successfully")
+
+
+# 9. Spending Patterns (Daily/Weekly)
+@api_view(["GET"])
+@permission_classes([IsAuthenticated])
+def spending_patterns_view(request):
+    """
+    Analyze spending patterns by day of week and weekly trends
+    Shows when user spends the most (last 90 days)
+    """
+    user = request.user
+    account_id = request.GET.get("account")
+    patterns_data = analyze_spending_patterns(user, account_id)
+    return success_response(patterns_data, message="Spending patterns analyzed successfully")
+
+
+# 10. Category Intelligence
+@api_view(["GET"])
+@permission_classes([IsAuthenticated])
+def category_intelligence_view(request):
+    """
+    Detailed category-wise spending analysis
+    Includes percentages, averages, and transaction statistics per category
+    """
+    user = request.user
+    account_id = request.GET.get("account")
+    intelligence_data = get_category_intelligence(user, account_id)
+    return success_response(intelligence_data, message="Category intelligence fetched successfully")
+
+
+# 11. Transaction Statistics & Outliers
+@api_view(["GET"])
+@permission_classes([IsAuthenticated])
+def transaction_statistics_view(request):
+    """
+    Statistical analysis of transactions with outlier detection
+    Query param: days (default: 30, max: 365)
+    """
+    user = request.user
+    account_id = request.GET.get("account")
+    days = int(request.GET.get("days", 30))
+    days = min(days, 365)  # Cap at 1 year
+
+    stats_data = get_transaction_statistics(user, account_id, days)
+    return success_response(stats_data, message="Transaction statistics calculated successfully")
+
+
+# 12. Period Comparison (Custom Date Ranges)
+@api_view(["GET"])
+@permission_classes([IsAuthenticated])
+def period_comparison_view(request):
+    """
+    Compare spending/income between two custom date periods
+    Query params:
+    - period1_start, period1_end (required)
+    - period2_start, period2_end (required)
+    - account (optional)
+    """
+    from datetime import datetime
+
+    user = request.user
+    account_id = request.GET.get("account")
+
+    try:
+        # Parse period 1
+        period1_start = datetime.strptime(request.GET.get("period1_start"), "%Y-%m-%d").date()
+        period1_end = datetime.strptime(request.GET.get("period1_end"), "%Y-%m-%d").date()
+
+        # Parse period 2
+        period2_start = datetime.strptime(request.GET.get("period2_start"), "%Y-%m-%d").date()
+        period2_end = datetime.strptime(request.GET.get("period2_end"), "%Y-%m-%d").date()
+
+        # Get transactions for period 1
+        period1_transactions = Transaction.objects.filter(
+            user=user,
+            date__gte=period1_start,
+            date__lte=period1_end
+        )
+        if account_id:
+            period1_transactions = period1_transactions.filter(account_id=account_id)
+
+        period1_income = period1_transactions.filter(type='income').aggregate(
+            total=Sum('amount'))['total'] or 0
+        period1_expense = period1_transactions.filter(type='expense').aggregate(
+            total=Sum('amount'))['total'] or 0
+
+        # Get transactions for period 2
+        period2_transactions = Transaction.objects.filter(
+            user=user,
+            date__gte=period2_start,
+            date__lte=period2_end
+        )
+        if account_id:
+            period2_transactions = period2_transactions.filter(account_id=account_id)
+
+        period2_income = period2_transactions.filter(type='income').aggregate(
+            total=Sum('amount'))['total'] or 0
+        period2_expense = period2_transactions.filter(type='expense').aggregate(
+            total=Sum('amount'))['total'] or 0
+
+        # Calculate differences
+        income_diff = period2_income - period1_income
+        expense_diff = period2_expense - period1_expense
+
+        income_change_pct = (income_diff / period1_income * 100) if period1_income > 0 else 0
+        expense_change_pct = (expense_diff / period1_expense * 100) if period1_expense > 0 else 0
+
+        data = {
+            "period1": {
+                "start_date": period1_start.strftime("%Y-%m-%d"),
+                "end_date": period1_end.strftime("%Y-%m-%d"),
+                "income": float(period1_income),
+                "expense": float(period1_expense),
+                "net": float(period1_income - period1_expense)
+            },
+            "period2": {
+                "start_date": period2_start.strftime("%Y-%m-%d"),
+                "end_date": period2_end.strftime("%Y-%m-%d"),
+                "income": float(period2_income),
+                "expense": float(period2_expense),
+                "net": float(period2_income - period2_expense)
+            },
+            "comparison": {
+                "income_difference": float(income_diff),
+                "income_change_percent": round(float(income_change_pct), 2),
+                "expense_difference": float(expense_diff),
+                "expense_change_percent": round(float(expense_change_pct), 2)
+            }
+        }
+
+        return success_response(data, message="Period comparison completed successfully")
+
+    except (ValueError, TypeError) as e:
+        return success_response(
+            None,
+            message=f"Invalid date format. Use YYYY-MM-DD format. Error: {str(e)}",
+            status=400
+        )
